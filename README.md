@@ -1,6 +1,6 @@
-## Introduction
+# Introduction
 The following repository provides a simple solution to the problem known as **The Dining Philosophers Dilemma**, which is often used as an example of multithreading.
-# Stack used
+## Stack used
 Libraries and dependencies:
 - Program logic:
   - _thread_
@@ -8,7 +8,7 @@ Libraries and dependencies:
   - _mutex_
 - Visualisation:
   - _ncurses.h_
-# How to run
+## How to run
 1. **Clone repository**
    
    ```bash
@@ -28,5 +28,5 @@ Libraries and dependencies:
    ./a.out N # N -> desired number of philosophers (threads). Must be > 5!
    ```
    
-# Contact information
+## Contact information
 - **Email** : [jasiu.hulboj@gmail.com](mailto:jasiu.hulboj@gmail.com)
