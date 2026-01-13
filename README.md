@@ -1,2 +1,25 @@
-# dining_philosphers
-Repository including a simple program for a simulation of multithreading. The script provides a solution to the problem of dining philosophers, which is a very popular multithreading exercise.
+# Introduction
+The following repository provides a simple solution to the problem known as **The Dining Philospphers Dilemma**, which is often used as an example of multithreading.
+# Stack used
+Libraries and dependencies:
+- Program logic:
+  - <thread>
+  - <semaphore>
+  - <mutex>
+- Visualisation:
+  - <ncurses.h>
+# How to run
+1. **Clone repository**
+   '''bash
+   git clone https://github.com/mlody-jano/dining_philosphers.git
+   cd dining_philosophers
+   '''
+2. **Compile program**
+   '''bash
+   g++ -std=c++20 main.cpp -lncurses -pthread
+3. **Run the script**
+   '''bash
+   ./a.out N # N -> desired number of philosophers (threads)
+   '''
+# Contact information
+- **Email** : [jasiu.hulboj@gmail.com](mailto:jasiu.hulboj@gmail.com)
