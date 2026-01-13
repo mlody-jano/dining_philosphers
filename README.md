@@ -25,7 +25,7 @@ Libraries and dependencies:
 5. **Run the script**
    
    ```bash
-   ./a.out N # N -> desired number of philosophers (threads)
+   ./a.out N # N -> desired number of philosophers (threads). Must be > 5!
    ```
    
 # Contact information
