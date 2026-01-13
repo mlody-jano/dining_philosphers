@@ -1,5 +1,5 @@
 ## Introduction
-The following repository provides a simple solution to the problem known as **The Dining Philospphers Dilemma**, which is often used as an example of multithreading.
+The following repository provides a simple solution to the problem known as **The Dining Philosophers Dilemma**, which is often used as an example of multithreading.
 # Stack used
 Libraries and dependencies:
 - Program logic:
