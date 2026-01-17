@@ -1,27 +1,9 @@
 #include "libraries.hpp"
 #include "definitions.hpp"
 
-unsigned int N = 5;
-
-int Y_max{0}, X_max{0};
-WINDOW * win = nullptr;
-vector<State> philo_state;
-vector<int> eat_count;
-vector<int> think_count;
-vector<chrono::steady_clock::time_point> action_start_time;
-vector<int> action_duration;
-mutex stats_mtx;
-vector<thread> threads;
-deque<binary_semaphore> both_forks_available;
-atomic<bool> running{true};
-
-Column col_id, col_state, col_progress, col_occurs;
-
-size_t inline left(size_t id) { return (id + N - 1) % N; }
-size_t inline right(size_t id) { return (id + 1) % N; }
-
 void signal_handler(int signum) {
     running = false;
+    cv.notify_all(); // Wake up any waiting threads
     // Clean up ncurses before exit
     if (win) {
         delwin(win);
@@ -31,55 +13,57 @@ void signal_handler(int signum) {
 }
 
 void test(size_t id) {
+    // A philosopher can eat if they are hungry and both neighbors are not eating
     if (philo_state[id] == State::HUNGRY &&
         philo_state[left(id)] != State::EATING &&
         philo_state[right(id)] != State::EATING) {
         philo_state[id] = State::EATING;
-        both_forks_available[id].release();
     }
 }
 
 void think(size_t id) {
-    size_t duration = rand() % 7000 + 5000;
+    // Simulate thinking for a random duration between 2 and 7 seconds
+    size_t duration = rand() % 5000 + 2000;
     {
-        lock_guard<mutex> lock(stats_mtx);
+        lock_guard<mutex> lock(stats_mtx); // Change stats under protection from lock_guard
         think_count[id]++;
-        action_start_time[id] = chrono::steady_clock::now();
+        action_start_time[id] = steady_clock::now();
         action_duration[id] = duration;
     }
-    this_thread::sleep_for(chrono::milliseconds(duration));
+    this_thread::sleep_for(milliseconds(duration));
 }
 
 void take_forks(size_t id) {
-    {
-        lock_guard<mutex> lock(critical_region_mtx);
-        philo_state[id] = State::HUNGRY;
-        test(id);
+    unique_lock<mutex> lock(philo_mtx); // Use unique_lock for condition_variable wait, rather than lock_guard
+    philo_state[id] = State::HUNGRY;
+    test(id);
+
+    while(philo_state[id] != State::EATING && running) {
+        cv.wait(lock); // Wait until notified
     }
-    both_forks_available[id].acquire();
 }
 
 void eat(size_t id) {
-    size_t duration = rand() % 7000 + 5000;
+    size_t duration = rand() % 5000 + 2000;
     {
-        lock_guard<mutex> lock(stats_mtx);
+        lock_guard<mutex> lock(stats_mtx); // Change stats under protection from lock_guard
         eat_count[id]++;
-        action_start_time[id] = chrono::steady_clock::now();
+        action_start_time[id] = steady_clock::now();
         action_duration[id] = duration;
     }
-    this_thread::sleep_for(chrono::milliseconds(duration));
+    this_thread::sleep_for(milliseconds(duration));
 }
 
 void put_forks(size_t id) {
-    {
-        lock_guard<mutex> lock(critical_region_mtx);
-        philo_state[id] = State::THINKING;
-        test(left(id));
-        test(right(id));
-    }
+    lock_guard<mutex> lock(philo_mtx); // Use lock_guard for simple locking, as no waiting is needed here
+    philo_state[id] = State::THINKING;
+    test(left(id));
+    test(right(id));
+    cv.notify_all();
 }
 
 void philosopher(size_t id) {
+    // Philosopher routine loop
     while (running) {
         think(id);
         if (!running) break;
@@ -138,19 +122,17 @@ void display_thread() {
     // 3 = Green for EATING
     
     int progress_bar_width = col_progress.width - 4; // Leave space for brackets and padding
-    if (progress_bar_width < 15) progress_bar_width = 15;
-    if (progress_bar_width > 35) progress_bar_width = 35;
     
     while (running) {
         {
-            lock_guard<mutex> lock(output_mtx);
+            lock_guard<mutex> lock(output_mtx); // Protect ncurses output from interferences, only this thread can write to ncurses
             
             for (size_t i = 0; i < N; i++) {
                 int row = i + 3;
                 
                 State current_state;
                 {
-                    lock_guard<mutex> lock(critical_region_mtx);
+                    lock_guard<mutex> lock(philo_mtx); // Read under protection from lock_guard
                     current_state = philo_state[i];
                 }
                 
@@ -177,11 +159,11 @@ void display_thread() {
                 // Column 3: Progress bar
                 int progress_filled = 0;
                 if (current_state == State::THINKING || current_state == State::EATING) {
-                    auto now = chrono::steady_clock::now();
+                    auto now = steady_clock::now();
                     int elapsed, total;
                     {
-                        lock_guard<mutex> lock(stats_mtx);
-                        elapsed = chrono::duration_cast<chrono::milliseconds>(
+                        lock_guard<mutex> lock(stats_mtx); // Read under protection from lock_guard
+                        elapsed = duration_cast<milliseconds>(
                             now - action_start_time[i]).count();
                         total = action_duration[i];
                     }
@@ -210,7 +192,7 @@ void display_thread() {
                 // Column 4: Occurrences with color
                 int eats, thinks;
                 {
-                    lock_guard<mutex> lock(stats_mtx);
+                    lock_guard<mutex> lock(stats_mtx); // Read under protection from lock_guard
                     eats = eat_count[i];
                     thinks = think_count[i];
                 }
@@ -222,24 +204,24 @@ void display_thread() {
             wrefresh(win);
         }
         
-        this_thread::sleep_for(chrono::milliseconds(250));
+        this_thread::sleep_for(milliseconds(100)); // Update every 100 ms
     }
 }
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        cerr << "Usage: " << argv[0] << " <number_of_philosophers>" << endl;
+        cerr << "Usage: " << argv[0] << " <number_of_philosophers>" << endl; // Check for argument
         return 1;
     }
     
     N = atoi(argv[1]);
     
     if (N < 5) {
-        cerr << "Number of philosophers must be at least 5" << endl;
+        cerr << "Number of philosophers must be at least 5" << endl; // Check for N > 5
         return 1;
     }
     
-    signal(SIGINT, signal_handler);
+    signal(SIGINT, signal_handler); // Register signal handler for graceful termination
     
     philo_state.resize(N, State::THINKING);
     eat_count.resize(N, 0);
@@ -248,8 +230,7 @@ int main(int argc, char* argv[]) {
     action_duration.resize(N, 0);
     
     for (size_t i{0}; i < N; i++) {
-        both_forks_available.emplace_back(0);
-        action_start_time[i] = chrono::steady_clock::now();
+        action_start_time[i] = steady_clock::now();
     }
     
     initscr();
@@ -269,10 +250,13 @@ int main(int argc, char* argv[]) {
     getmaxyx(stdscr, Y_max, X_max);
     
     // Define column structure
+
+    // ID Column 
     col_id.start = 1;
     col_id.width = 4;
     col_id.header = "ID";
     
+    // State Column
     col_state.start = col_id.start + col_id.width + 1;
     col_state.width = 11;
     col_state.header = "State";
@@ -282,16 +266,18 @@ int main(int argc, char* argv[]) {
     if (progress_width < 25) progress_width = 25;
     if (progress_width > 50) progress_width = 50;
     
+    // Progress Column
     col_progress.start = col_state.start + col_state.width + 1;
     col_progress.width = progress_width;
     col_progress.header = "Progress";
     
+    // Occurrences Column
     col_occurs.start = col_progress.start + col_progress.width + 1;
     col_occurs.width = 21;
     col_occurs.header = "Occurrences";
     
     int table_width = col_occurs.start + col_occurs.width + 1;
-    win = newwin(N + 4, table_width + 1, 0, 0);
+    win = newwin(N + 4, table_width + 1, 0, 0); // Define the pointer to the window performing the visualization
     
     // Draw table structure
     draw_table_borders();
@@ -302,18 +288,18 @@ int main(int argc, char* argv[]) {
     mvwprintw(win, 1, col_progress.start + 1, "%s", col_progress.header.c_str());
     mvwprintw(win, 1, col_occurs.start + 1, "%s", col_occurs.header.c_str());
     
-    wrefresh(win);
+    wrefresh(win); // Refresh window to show the table
     
-    threads.reserve(N + 1);
+    threads.reserve(N + 1); // Reserve space for philosopher threads + display thread
     
     for (size_t i{0}; i < N; ++i) {
-        threads.emplace_back(philosopher, i);
+        threads.emplace_back(philosopher, i); // Create philosopher threads
     }
     
-    threads.emplace_back(display_thread);
+    threads.emplace_back(display_thread); // Create display thread
 
     for (auto& t : threads) {
-        t.join();
+        t.join(); // Join all thread to the main thread
     }
     
     // Clean up ncurses

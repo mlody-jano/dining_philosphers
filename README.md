@@ -4,7 +4,7 @@ The following repository provides a simple solution to the problem known as **Th
 Libraries and dependencies:
 - Program logic:
   - _thread_
-  - _semaphore_
+  - _condition variable_
   - _mutex_
 - Visualisation:
   - _ncurses.h_
