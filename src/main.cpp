@@ -13,17 +13,19 @@ void signal_handler(int signum) {
 }
 
 void test(size_t id) {
-    // A philosopher can eat if they are hungry and both neighbors are not eating
+    // A philosopher can eat if they are hungry and both forks are available
     if (philo_state[id] == State::HUNGRY &&
-        philo_state[left(id)] != State::EATING &&
-        philo_state[right(id)] != State::EATING) {
+        !fork_in_use[left(id)] &&
+        !fork_in_use[id]) {
         philo_state[id] = State::EATING;
+        fork_in_use[left(id)] = true;  // Take left fork
+        fork_in_use[id] = true;         // Take right fork
     }
 }
 
 void think(size_t id) {
-    // Simulate thinking for a random duration between 2 and 7 seconds
-    size_t duration = rand() % 5000 + 2000;
+    // Simulate thinking for a random duration between 1 and 5 seconds
+    size_t duration = rand() % 4000 + 1000;
     {
         lock_guard<mutex> lock(stats_mtx); // Change stats under protection from lock_guard
         think_count[id]++;
@@ -55,8 +57,10 @@ void eat(size_t id) {
 }
 
 void put_forks(size_t id) {
-    lock_guard<mutex> lock(philo_mtx); // Use lock_guard for simple locking, as no waiting is needed here
+    lock_guard<mutex> lock(philo_mtx);
     philo_state[id] = State::THINKING;
+    fork_in_use[left(id)] = false;  // Release left fork
+    fork_in_use[id] = false;         // Release right fork
     test(left(id));
     test(right(id));
     cv.notify_all();
@@ -228,6 +232,7 @@ int main(int argc, char* argv[]) {
     think_count.resize(N, 0);
     action_start_time.resize(N);
     action_duration.resize(N, 0);
+    fork_in_use.resize(N, false);
     
     for (size_t i{0}; i < N; i++) {
         action_start_time[i] = steady_clock::now();

@@ -24,6 +24,7 @@ vector<int> think_count;
 vector<thread> threads;
 vector<chrono::steady_clock::time_point> action_start_time;
 vector<int> action_duration;
+vector<bool> fork_in_use;
 
 mutex stats_mtx;
 mutex philo_mtx;
